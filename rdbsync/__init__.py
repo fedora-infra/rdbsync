@@ -6,16 +6,14 @@ It is intended to be run with cron.
 """
 
 import logging
+import sys
 import time
 
 import click
 import requests
 
 
-_log = logging.getLogger('rdbsync')
-
-# TODO add a 'full-sync' option that iterates over _all_ results in CentOS
-# and checks it against Fedora. This is helpful for debugging
+_log = logging.getLogger(__name__)
 
 # TODO accept an API token via the CLI or by reading a file
 
@@ -28,14 +26,84 @@ POLL_INTERVAL_HELP = ('If provided, the command will run continuously, sleeping 
 LOG_LEVEL_HELP = 'The log level to use. Options are DEBUG, INFO, WARNING, ERROR, CRITICAL.'
 
 
-@click.command()
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
+@click.option('--centos-url', default=CENTOS_URL_DEFAULT, help=CENTOS_URL_HELP)
+@click.option('--fedora-url', default=FEDORA_URL_DEFAULT, help=FEDORA_URL_HELP)
+@click.option('--timeout', default=15,
+              help='The timeout for HTTP requests in seconds. Default: 15')
+@click.option('--log-level', default='INFO', type=str, help=LOG_LEVEL_HELP)
+def verify(centos_url, fedora_url, timeout, log_level):
+
+    logging.basicConfig(level=log_level)
+
+    centos_resultsdb = ResultsDb(api_url=centos_url)
+    fedora_resultsdb = ResultsDb(api_url=fedora_url)
+
+    fedora_results = fedora_resultsdb.get_results(
+        centos_ci_resultsdb=True, _sort='asc:submit_time', limit=50)
+
+    verified_count = 0
+
+    for fedora_result in fedora_results:
+        fedora_result['data'].pop('centos_ci_resultsdb')
+        centos_id = fedora_result['data'].pop('centos_ci_resultsdb_id')
+        if isinstance(centos_id, list):
+            # For some reason the API wraps this in a list
+            centos_id = centos_id[0]
+        centos_submit_time = fedora_result['data'].pop('centos_ci_resultsdb_submit_time')
+        if isinstance(centos_submit_time, list):
+            # For some reason the API wraps this in a list
+            centos_submit_time = centos_submit_time[0]
+        centos_result = centos_resultsdb.get_result(centos_id)
+
+        if centos_result['submit_time'] != centos_submit_time:
+            _log.error('CentOS CI submit_time (%s) does not match Fedora centos_submit_time (%s)',
+                       centos_result['data'], fedora_result['data'])
+            sys.exit(1)
+
+        if centos_result['data'] != fedora_result['data']:
+            _log.error('CentOS CI data (%r) does not match Fedora data (%r)',
+                       centos_result['data'], fedora_result['data'])
+            sys.exit(1)
+
+        _log.info('CentOS Result ID %s matches Fedora Result ID %s',
+                  centos_result['id'], fedora_result['id'])
+        verified_count += 1
+
+    _log.info('Verified %s results in the Fedora ResultsDB', verified_count)
+
+    # Report when the latest results are from in both databases.
+    fedora_results = fedora_resultsdb.get_results(
+        centos_ci_resultsdb=True, _sort='desc:submit_time', limit=1)
+    try:
+        last_fedora_result = next(fedora_results)
+        _log.info('The last result from CentOS CI in Fedora ResultsDB is from %s',
+                  last_fedora_result['data']['centos_ci_resultsdb_submit_time'])
+    except StopIteration:
+        _log.info('There are no results in the Fedora ResultsDB from CentOS CI.')
+
+    centos_results = centos_resultsdb.get_results(_sort='desc:submit_time', limit=1)
+    try:
+        last_centos_result = next(centos_results)
+        _log.info('The latest result from CentOS CI ResultsDB is from %s',
+                  last_centos_result['submit_time'])
+    except StopIteration:
+        _log.info('There are no results in the CentOS CI ResultsDB.')
+
+
+@cli.command()
 @click.option('--centos-url', default=CENTOS_URL_DEFAULT, help=CENTOS_URL_HELP)
 @click.option('--fedora-url', default=FEDORA_URL_DEFAULT, help=FEDORA_URL_HELP)
 @click.option('--timeout', default=15,
               help='The timeout for HTTP requests in seconds. Default: 15')
 @click.option('--poll-interval', default=None, type=int, help=POLL_INTERVAL_HELP)
 @click.option('--log-level', default='INFO', type=str, help=LOG_LEVEL_HELP)
-def main(centos_url, fedora_url, timeout, poll_interval, log_level):
+def run(centos_url, fedora_url, timeout, poll_interval, log_level):
     """Synchronize the CentOS CI ResultsDB to the Fedora ResultsDB."""
 
     logging.basicConfig(level=log_level)
@@ -47,7 +115,7 @@ def main(centos_url, fedora_url, timeout, poll_interval, log_level):
         # Find out where to start from using the dest db
         _log.info('Attempting to discover the last sync time')
         results = fedora_resultsdb.get_results(
-                centos_ci_resultsdb=True, _sort='asc:submit_time', limit=1)
+            centos_ci_resultsdb=True, _sort='desc:submit_time', limit=1)
         last_result = None
         try:
             last_result = next(results)
@@ -62,7 +130,8 @@ def main(centos_url, fedora_url, timeout, poll_interval, log_level):
             _log.info('This appears to be the first sync. Querying {url} for all results'
                       ' since the dawn of time'.format(url=centos_url))
 
-        centos_results = centos_resultsdb.get_results(since=since, limit=50)
+        centos_results = centos_resultsdb.get_results(
+            _sort='asc:submit_time', since=since, limit=50)
         for result in centos_results:
             if list(fedora_resultsdb.get_results(centos_ci_resultsdb_id=result['id'])):
                 # Ensure we don't insert duplicates. This is pretty expensive as it's one query
@@ -150,7 +219,9 @@ class ResultsDb(object):
                 ResultsDB and is expected to already have an 'id' and 'submit_time'.
             timeout (int): The timeout for the HTTP request.
         """
-        result['_auth_token'] = self.auth_token
+
+        if self.auth_token is not None:
+            result['_auth_token'] = self.auth_token
 
         # A nice bool to query on.
         result['data']['centos_ci_resultsdb'] = True
@@ -165,4 +236,4 @@ class ResultsDb(object):
 
 
 if __name__ == '__main__':
-    main()
+    cli()

@@ -27,6 +27,6 @@ setup(
     ],
     entry_points="""
         [console_scripts]
-        rdbsync=rdbsync:main
+        rdbsync=rdbsync:cli
     """
 )
