@@ -38,7 +38,12 @@ def cli():
               help='The timeout for HTTP requests in seconds. Default: 15')
 @click.option('--log-level', default='INFO', type=str, help=LOG_LEVEL_HELP)
 def verify(centos_url, fedora_url, timeout, log_level):
+    """
+    Verify all the Fedora ResultsDB results.
 
+    This checks all results in the Fedora ResultsDB against those in the CentOS
+    ResultsDB.
+    """
     logging.basicConfig(
         level=log_level, format='[%(asctime)s][%(name)s %(levelname)s] %(message)s')
 

@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 setup(
     name='rdbsync',
     description='Sync ResultsDB instances using the REST API.',
-    version='0.1.0',
+    version='0.2.0',
     author='Red Hat, Inc. and others',
     author_email='infrastructure@fedoraproject.org',
     maintainer='Red Hat, Inc. and others',

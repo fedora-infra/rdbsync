@@ -1,6 +1,6 @@
 
 Name:           rdbsync
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        A script to sync CentOS CI ResultsDB to Fedora
 
@@ -9,8 +9,9 @@ URL:            https://github.com/jeremycline/%{name}
 Source0:        %{url}/archive/%{version}/%{name}-%{version}.tar.gz
 BuildArch:      noarch
 
-BuildRequires:  python2-devel
-BuildRequires:  python2-setuptools
+BuildRequires: python2-devel
+BuildRequires: python2-setuptools
+BuildRequires: systemd
 Requires: python2-requests
 Requires: python2-click
 
@@ -28,7 +29,7 @@ A script to sync CentOS CI ResultsDB to Fedora.
 
 %install
 %py2_install
-install -p -D -T -m 0644 rdbsync.service %{buildroot}%{_unitdir}/rdbsync.service
+install -p -D -T -m 0644 rdbsync.service %{buildroot}/%{_unitdir}/rdbsync.service
 
 
 %files
