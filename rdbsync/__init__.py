@@ -140,10 +140,22 @@ def run(centos_url, fedora_url, token_file, timeout, poll_interval, log_level):
 
         centos_results = centos_resultsdb.get_results(
             _sort='asc:submit_time', since=since, limit=50)
+
+        # Grab a list of duplicate result ids - if some of the results
+        #  already exist in ResultsDB, we want to skip those to avoid
+        #  storing duplicates
+        centos_result_ids = (str(r['id']) for r in centos_results)
+        # This asks ResultsDB for all results, that have the `centos_ci_resultsdb_id`
+        #  property set to any of the result ids we are about to insert.
+        # All returned results should be skipped later on.
+        existing_results = list(
+            fedora_resultsdb.get_results(
+                centos_ci_resultsdb_id=','.join(centos_result_ids)
+                )
+            )
+        duplicate_ids = [r['data']['centos_ci_resultsdb_id'] for r in existing_results]
         for result in centos_results:
-            if list(fedora_resultsdb.get_results(centos_ci_resultsdb_id=result['id'])):
-                # Ensure we don't insert duplicates. This is pretty expensive as it's one query
-                # per potentially new result, but it does ensure we don't duplicate results.
+            if str(result['id']) in duplicate_ids:
                 _log.debug('Skipping result %s from CentOS CI as it appears to be in '
                            'Fedora ResultsDB.', result['id'])
                 continue
@@ -217,6 +229,8 @@ class ResultsDb(object):
             for result in deserialized_response['data']:
                 yield result
             url = deserialized_response['next']
+            # all the params are already encoded in the 'next' url
+            params = None
 
     def create_result(self, result, timeout=15):
         """
