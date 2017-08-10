@@ -14,3 +14,6 @@ to sync to. Once it's set up, you can sync to it with a command like:
 ```
 rdbsync --centos-url http://resultsdb.ci.centos.org/resultsdb_api/api --fedora-url http://localhost:5000/api
 ```
+
+This script can be run using cron or systemd timers, or as a systemd service by using the --poll-interval
+argument.

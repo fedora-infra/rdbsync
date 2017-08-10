@@ -13,7 +13,6 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=['requests', 'click'],
-    tests_require=['pytest', 'betamax'],
     classifiers=[  # https://pypi.python.org/pypi?%3Aaction=list_classifiers
         'Intended Audience :: System Administrators',
         'License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)',

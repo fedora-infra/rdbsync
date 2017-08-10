@@ -5,6 +5,7 @@ A sync script that moves ResultsDB results from CentOS CI to Fedora's ResultsDB.
 It is intended to be run with cron.
 """
 
+import os
 import logging
 import sys
 import time
@@ -15,7 +16,6 @@ import requests
 
 _log = logging.getLogger(__name__)
 
-# TODO accept an API token via the CLI or by reading a file
 
 CENTOS_URL_DEFAULT = 'https://resultsdb.ci.centos.org/resultsdb_api/api'
 CENTOS_URL_HELP = 'The URL to the CentOS CI ResultsDB API. Default: {}'.format(CENTOS_URL_DEFAULT)
@@ -39,7 +39,8 @@ def cli():
 @click.option('--log-level', default='INFO', type=str, help=LOG_LEVEL_HELP)
 def verify(centos_url, fedora_url, timeout, log_level):
 
-    logging.basicConfig(level=log_level)
+    logging.basicConfig(
+        level=log_level, format='[%(asctime)s][%(name)s %(levelname)s] %(message)s')
 
     centos_resultsdb = ResultsDb(api_url=centos_url)
     fedora_resultsdb = ResultsDb(api_url=fedora_url)
@@ -99,17 +100,24 @@ def verify(centos_url, fedora_url, timeout, log_level):
 @cli.command()
 @click.option('--centos-url', default=CENTOS_URL_DEFAULT, help=CENTOS_URL_HELP)
 @click.option('--fedora-url', default=FEDORA_URL_DEFAULT, help=FEDORA_URL_HELP)
+@click.option('--token-file', default=None, help='The path to a file containing an API token')
 @click.option('--timeout', default=15,
               help='The timeout for HTTP requests in seconds. Default: 15')
 @click.option('--poll-interval', default=None, type=int, help=POLL_INTERVAL_HELP)
 @click.option('--log-level', default='INFO', type=str, help=LOG_LEVEL_HELP)
-def run(centos_url, fedora_url, timeout, poll_interval, log_level):
+def run(centos_url, fedora_url, token_file, timeout, poll_interval, log_level):
     """Synchronize the CentOS CI ResultsDB to the Fedora ResultsDB."""
 
-    logging.basicConfig(level=log_level)
+    logging.basicConfig(
+        level=log_level, format='[%(asctime)s][%(name)s %(levelname)s] %(message)s')
 
-    centos_resultsdb = ResultsDb(api_url=centos_url)
-    fedora_resultsdb = ResultsDb(api_url=fedora_url)
+    token = None
+    if token_file and os.path.exists(token_file):
+        with open(token_file, 'r') as fd:
+            token = fd.read()
+
+    centos_resultsdb = ResultsDb(api_url=centos_url, auth_token=token)
+    fedora_resultsdb = ResultsDb(api_url=fedora_url, auth_token=token)
 
     while True:
         # Find out where to start from using the dest db
