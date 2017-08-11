@@ -50,55 +50,56 @@ def verify(centos_url, fedora_url, timeout, log_level):
     centos_resultsdb = ResultsDb(api_url=centos_url)
     fedora_resultsdb = ResultsDb(api_url=fedora_url)
 
-    fedora_results = fedora_resultsdb.get_results(
+    fedora_results_pages = fedora_resultsdb.get_results(
         centos_ci_resultsdb=True, _sort='asc:submit_time', limit=50)
 
     verified_count = 0
 
-    for fedora_result in fedora_results:
-        fedora_result['data'].pop('centos_ci_resultsdb')
-        centos_id = fedora_result['data'].pop('centos_ci_resultsdb_id')
-        if isinstance(centos_id, list):
-            # For some reason the API wraps this in a list
-            centos_id = centos_id[0]
-        centos_submit_time = fedora_result['data'].pop('centos_ci_resultsdb_submit_time')
-        if isinstance(centos_submit_time, list):
-            # For some reason the API wraps this in a list
-            centos_submit_time = centos_submit_time[0]
-        centos_result = centos_resultsdb.get_result(centos_id)
+    for fedora_result_page in fedora_results_pages:
+        for fedora_result in fedora_result_page:
+            fedora_result['data'].pop('centos_ci_resultsdb')
+            centos_id = fedora_result['data'].pop('centos_ci_resultsdb_id')
+            if isinstance(centos_id, list):
+                # For some reason the API wraps this in a list
+                centos_id = centos_id[0]
+            centos_submit_time = fedora_result['data'].pop('centos_ci_resultsdb_submit_time')
+            if isinstance(centos_submit_time, list):
+                # For some reason the API wraps this in a list
+                centos_submit_time = centos_submit_time[0]
+            centos_result = centos_resultsdb.get_result(centos_id)
 
-        if centos_result['submit_time'] != centos_submit_time:
-            _log.error('CentOS CI submit_time (%s) does not match Fedora centos_submit_time (%s)',
-                       centos_result['data'], fedora_result['data'])
-            sys.exit(1)
+            if centos_result['submit_time'] != centos_submit_time:
+                _log.error('CentOS CI submit_time (%s) does not match Fedora centos_submit_time'
+                           ' (%s)', centos_result['data'], fedora_result['data'])
+                sys.exit(1)
 
-        if centos_result['data'] != fedora_result['data']:
-            _log.error('CentOS CI data (%r) does not match Fedora data (%r)',
-                       centos_result['data'], fedora_result['data'])
-            sys.exit(1)
+            if centos_result['data'] != fedora_result['data']:
+                _log.error('CentOS CI data (%r) does not match Fedora data (%r)',
+                           centos_result['data'], fedora_result['data'])
+                sys.exit(1)
 
-        _log.info('CentOS Result ID %s matches Fedora Result ID %s',
-                  centos_result['id'], fedora_result['id'])
-        verified_count += 1
+            _log.info('CentOS Result ID %s matches Fedora Result ID %s',
+                      centos_result['id'], fedora_result['id'])
+            verified_count += 1
 
     _log.info('Verified %s results in the Fedora ResultsDB', verified_count)
 
     # Report when the latest results are from in both databases.
     fedora_results = fedora_resultsdb.get_results(
         centos_ci_resultsdb=True, _sort='desc:submit_time', limit=1)
-    try:
-        last_fedora_result = next(fedora_results)
+    last_fedora_result = next(fedora_results)
+    if len(last_fedora_result) > 0:
         _log.info('The last result from CentOS CI in Fedora ResultsDB is from %s',
-                  last_fedora_result['data']['centos_ci_resultsdb_submit_time'])
-    except StopIteration:
+                  last_fedora_result[0]['data']['centos_ci_resultsdb_submit_time'])
+    else:
         _log.info('There are no results in the Fedora ResultsDB from CentOS CI.')
 
     centos_results = centos_resultsdb.get_results(_sort='desc:submit_time', limit=1)
-    try:
-        last_centos_result = next(centos_results)
+    last_centos_result = next(centos_results)
+    if len(last_fedora_result) > 0:
         _log.info('The latest result from CentOS CI ResultsDB is from %s',
-                  last_centos_result['submit_time'])
-    except StopIteration:
+                  last_centos_result[0]['submit_time'])
+    else:
         _log.info('There are no results in the CentOS CI ResultsDB.')
 
 
@@ -129,30 +130,37 @@ def run(centos_url, fedora_url, token_file, timeout, poll_interval, log_level):
         _log.info('Attempting to discover the last sync time')
         results = fedora_resultsdb.get_results(
             centos_ci_resultsdb=True, _sort='desc:submit_time', limit=1)
-        last_result = None
-        try:
-            last_result = next(results)
-            since = last_result['data']['centos_ci_resultsdb_submit_time']
+        last_result = next(results)
+        if len(last_result) > 0:
+            since = last_result[0]['data']['centos_ci_resultsdb_submit_time']
             if isinstance(since, list):
                 since = since[0]
             _log.info('Querying {url} for all results since {since}'.format(
                   url=centos_url, since=since))
-        except StopIteration:
+        else:
             # There are no CentOS CI results, so we must start from the dawn of time
             since = None
             _log.info('This appears to be the first sync. Querying {url} for all results'
                       ' since the dawn of time'.format(url=centos_url))
 
-        centos_results = centos_resultsdb.get_results(
+        centos_results_pages = centos_resultsdb.get_results(
             _sort='asc:submit_time', since=since, limit=50)
-        for result in centos_results:
-            if list(fedora_resultsdb.get_results(centos_ci_resultsdb_id=result['id'])):
-                # Ensure we don't insert duplicates. This is pretty expensive as it's one query
-                # per potentially new result, but it does ensure we don't duplicate results.
-                _log.debug('Skipping result %s from CentOS CI as it appears to be in '
-                           'Fedora ResultsDB.', result['id'])
-                continue
-            fedora_resultsdb.create_result(result)
+        for centos_results_page in centos_results_pages:
+
+            # Grab a list of duplicate result ids - if some of the results
+            #  already exist in ResultsDB, we want to skip those to avoid
+            #  storing duplicates
+            centos_result_ids = ','.join([str(r['id']) for r in centos_results_page])
+            existing_fedora_results = next(fedora_resultsdb.get_results(
+                centos_ci_resultsdb_id=centos_result_ids, limit=50))
+            duplicate_ids = [int(r['data']['centos_ci_resultsdb_id'][0])
+                             for r in existing_fedora_results]
+            for result in centos_results_page:
+                if int(result['id']) in duplicate_ids:
+                    _log.debug('Skipping result %s from CentOS CI as it appears to be in '
+                               'Fedora ResultsDB.', result['id'])
+                    continue
+                fedora_resultsdb.create_result(result)
 
         _log.info('Sync complete!')
 
@@ -201,8 +209,6 @@ class ResultsDb(object):
         """
         Query ResultsDB for multiple results.
 
-        This automatically handles pagination.
-
         Args:
             timeout (int): The timeout for the HTTP request.
             **parameters: Query parameters to use. Consult the `API documentation
@@ -210,7 +216,9 @@ class ResultsDb(object):
                 parameters.
 
         Yields:
-            dict: A Result dictionary in the format described in the ResultsDB API.
+            list: A list of Result dictionary in the format described in the ResultsDB
+                API. Each list represents a page so each call to next on the return value
+                fetches a page.
         """
         url = '{base}/v2.0/results'.format(base=self.api_url)
 
@@ -219,9 +227,10 @@ class ResultsDb(object):
             response.raise_for_status()
 
             deserialized_response = response.json()
-            for result in deserialized_response['data']:
-                yield result
+            yield deserialized_response['data']
             url = deserialized_response['next']
+            # all the params are already encoded in the 'next' url
+            parameters = None
 
     def create_result(self, result, timeout=15):
         """
