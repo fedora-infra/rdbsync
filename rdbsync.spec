@@ -1,6 +1,6 @@
 
 Name:           rdbsync
-Version:        0.2.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        A script to sync CentOS CI ResultsDB to Fedora
 
@@ -42,5 +42,8 @@ install -p -D -T -m 0644 rdbsync.service %{buildroot}/%{_unitdir}/rdbsync.servic
 
 
 %changelog
+* Fri Aug 11 2017 Jeremy Cline <jeremy@jcline.org> - 0.3.0-1
+- Update to latest upstream
+
 * Thu Aug 10 2017 Jeremy Cline <jeremy@jcline.org> - 0.1.0-1
 - Initial package
