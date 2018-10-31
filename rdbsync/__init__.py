@@ -149,20 +149,23 @@ def run(centos_url, fedora_url, token_file, timeout, poll_interval, log_level, d
             _sort='asc:submit_time', since=since, limit=50)
         for centos_results_page in centos_results_pages:
 
-            # Grab a list of duplicate result ids - if some of the results
+            # Grab a list of duplicate message ids - if some of the results
             #  already exist in ResultsDB, we want to skip those to avoid
             #  storing duplicates
-            centos_result_ids = ','.join([str(r['id']) for r in centos_results_page])
+            centos_result_ids = ','.join([str(r['data']['msg_id']) for r in centos_results_page])
             existing_fedora_results = next(fedora_resultsdb.get_results(
-                centos_ci_resultsdb_id=centos_result_ids, limit=50))
-            duplicate_ids = [int(r['data']['centos_ci_resultsdb_id'][0])
+                msg_id=centos_result_ids, limit=50))
+            duplicate_ids = [r['data']['msg_id'][0]
                              for r in existing_fedora_results]
             for result in centos_results_page:
-                if int(result['id']) in duplicate_ids:
+                if result['data']['msg_id'] in duplicate_ids:
                     _log.debug('Skipping result %s from CentOS CI as it appears to be in '
                                'Fedora ResultsDB.', result['id'])
                     continue
-                fedora_resultsdb.create_result(result)
+                if not dry_run:
+                    fedora_resultsdb.create_result(result)
+                else:
+                    _log.info("Dry RUN: Would create (%s, %s, %s)", result['id'], result['submit_time'], result['data']['msg_id'])
 
         _log.info('Sync complete!')
 
