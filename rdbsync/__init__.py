@@ -152,9 +152,9 @@ def run(centos_url, fedora_url, token_file, timeout, poll_interval, log_level, d
             # Grab a list of duplicate message ids - if some of the results
             #  already exist in ResultsDB, we want to skip those to avoid
             #  storing duplicates
-            centos_result_ids = ','.join([str(r['data']['msg_id']) for r in centos_results_page])
+            centos_msg_ids = ','.join([str(r['data']['msg_id']) for r in centos_results_page])
             existing_fedora_results = next(fedora_resultsdb.get_results(
-                msg_id=centos_result_ids, limit=50))
+                msg_id=centos_msg_ids, limit=50))
             duplicate_ids = [r['data']['msg_id'][0]
                              for r in existing_fedora_results]
             for result in centos_results_page:
