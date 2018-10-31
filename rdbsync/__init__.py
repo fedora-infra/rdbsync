@@ -24,6 +24,7 @@ FEDORA_URL_HELP = 'The URL to the Fedora ResultsDB API. Default: {}'.format(FEDO
 POLL_INTERVAL_HELP = ('If provided, the command will run continuously, sleeping for the'
                       ' provided number of seconds after each run.')
 LOG_LEVEL_HELP = 'The log level to use. Options are DEBUG, INFO, WARNING, ERROR, CRITICAL.'
+DRY_RUN_HELP = 'Dry run. If selected, print what would have been added to Fedora ResultsDB.'
 
 
 @click.group()
@@ -111,7 +112,8 @@ def verify(centos_url, fedora_url, timeout, log_level):
               help='The timeout for HTTP requests in seconds. Default: 15')
 @click.option('--poll-interval', default=None, type=int, help=POLL_INTERVAL_HELP)
 @click.option('--log-level', default='INFO', type=str, help=LOG_LEVEL_HELP)
-def run(centos_url, fedora_url, token_file, timeout, poll_interval, log_level):
+@click.option('--dry-run', default=False, is_flag=True, help=DRY_RUN_HELP)
+def run(centos_url, fedora_url, token_file, timeout, poll_interval, log_level, dry_run):
     """Synchronize the CentOS CI ResultsDB to the Fedora ResultsDB."""
 
     logging.basicConfig(
