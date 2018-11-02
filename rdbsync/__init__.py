@@ -24,6 +24,7 @@ FEDORA_URL_HELP = 'The URL to the Fedora ResultsDB API. Default: {}'.format(FEDO
 POLL_INTERVAL_HELP = ('If provided, the command will run continuously, sleeping for the'
                       ' provided number of seconds after each run.')
 LOG_LEVEL_HELP = 'The log level to use. Options are DEBUG, INFO, WARNING, ERROR, CRITICAL.'
+DRY_RUN_HELP = 'Dry run. If selected, print what would have been added to Fedora ResultsDB.'
 
 
 @click.group()
@@ -111,7 +112,8 @@ def verify(centos_url, fedora_url, timeout, log_level):
               help='The timeout for HTTP requests in seconds. Default: 15')
 @click.option('--poll-interval', default=None, type=int, help=POLL_INTERVAL_HELP)
 @click.option('--log-level', default='INFO', type=str, help=LOG_LEVEL_HELP)
-def run(centos_url, fedora_url, token_file, timeout, poll_interval, log_level):
+@click.option('--dry-run', default=False, is_flag=True, help=DRY_RUN_HELP)
+def run(centos_url, fedora_url, token_file, timeout, poll_interval, log_level, dry_run):
     """Synchronize the CentOS CI ResultsDB to the Fedora ResultsDB."""
 
     logging.basicConfig(
@@ -147,20 +149,23 @@ def run(centos_url, fedora_url, token_file, timeout, poll_interval, log_level):
             _sort='asc:submit_time', since=since, limit=50)
         for centos_results_page in centos_results_pages:
 
-            # Grab a list of duplicate result ids - if some of the results
+            # Grab a list of duplicate message ids - if some of the results
             #  already exist in ResultsDB, we want to skip those to avoid
             #  storing duplicates
-            centos_result_ids = ','.join([str(r['id']) for r in centos_results_page])
+            centos_msg_ids = ','.join([str(r['data']['msg_id']) for r in centos_results_page])
             existing_fedora_results = next(fedora_resultsdb.get_results(
-                centos_ci_resultsdb_id=centos_result_ids, limit=50))
-            duplicate_ids = [int(r['data']['centos_ci_resultsdb_id'][0])
+                msg_id=centos_msg_ids, limit=50))
+            duplicate_ids = [r['data']['msg_id'][0]
                              for r in existing_fedora_results]
             for result in centos_results_page:
-                if int(result['id']) in duplicate_ids:
+                if result['data']['msg_id'] in duplicate_ids:
                     _log.debug('Skipping result %s from CentOS CI as it appears to be in '
                                'Fedora ResultsDB.', result['id'])
                     continue
-                fedora_resultsdb.create_result(result)
+                if not dry_run:
+                    fedora_resultsdb.create_result(result)
+                else:
+                    _log.info("Dry RUN: Would create (%s, %s, %s)", result['id'], result['submit_time'], result['data']['msg_id'])
 
         _log.info('Sync complete!')
 
